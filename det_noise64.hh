@@ -8,6 +8,10 @@
     The following code implements a deterministic N-dimensional smooth
     64-bit integer noise function. This function hasn't been tested extensively.
     
+    It's supposed to be uniform but there is a slight bias towards larger numbers 
+    and I can't figure out how to fix it other than band-aiding it by adjusting the
+    shift operations after adds.
+    
     Also the "det_point_noise64" function should probably be improved or
     replaced with something faster.
     
@@ -189,14 +193,14 @@ namespace rpnx
         std::uint64_t v = sigvals[q];
         // a is the "low" value is a low value for v should indicate a high contribution for a
         // b is the high value so a high value of v should be a high contribution from b
-        uint128_t o = uint128_t(a) * 2 * ((uint128_t(1) << (C)) - v) + 2 * v * uint128_t(b);
+        uint128_t o = uint128_t(a) * ((uint128_t(1) << (C)) - v) + v * uint128_t(b);
         
         r ^= static_cast<std::uint8_t>((field_corners[i] & 0xFF00) >> 8);
         // update: use boost's 128-bit number to get around precision loss.
         // It's unfortunate that precision is lost here... maybe there is a better way to do this
         
-        field_corners[i] = static_cast<std::uint64_t> ((o >> (C-2)) & ((uint128_t(1) << 64)-1));
-        field_corners[i] ^= 3 & ( (r >> 3) ^ (r >> 7));
+        field_corners[i] = static_cast<std::uint64_t> ((o >> (C-4)) & ((uint128_t(1) << 64)-1));
+     //   field_corners[i] ^= 3 & ( (r >> 3) ^ (r >> 7));
       }
     }
     
