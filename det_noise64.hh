@@ -188,6 +188,10 @@ namespace rpnx
       this to automatic deduction.
       
       @param inputs A std::array of N 64-bit integers
+      
+      @time O(N 2^N), O(1) as compiled
+      
+      @space O(2^N),  O(1) as compiled
   */
   template <std::size_t C = 32, std::size_t N = 1>
   std::uint64_t uniform_smooth_noise64(std::array<std::uint64_t, N> inputs)
