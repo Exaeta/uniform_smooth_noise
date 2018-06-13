@@ -5,15 +5,11 @@
   
     https://github.com/Exaeta/det_noise64
     
-    The following code implements a deterministic N-dimensional smooth
-    64-bit integer noise function. This function hasn't been tested extensively.
-    
-    It's supposed to be uniform but there is a slight bias towards larger numbers 
-    and I can't figure out how to fix it other than band-aiding it by adjusting the
-    shift operations after adds.
-    
-    Also the "det_point_noise64" function should probably be improved or
-    replaced with something faster.
+    uniform_smooth_noise64 is a N-dimensional uniform smooth noise 
+    function, but I'm going tochange the hash function into something 
+    faster/more well known in a later version (and/or allow templating 
+    the hash used). The next version or version with templated hash will
+    be cross platform deterministic.
     
     It doesn't rely on any third party libraries except boost::multiprecision,
     which can be substituited for any library that provides a 128-bit 
@@ -105,7 +101,96 @@ namespace rpnx
   }
   
   template <std::size_t C = 32, std::size_t N = 1>
-  std::uint64_t det_field_noise64(std::array<std::uint64_t, N> inputs, std::size_t c = 9)
+  [[deprecated]] std::uint64_t det_field_noise64(std::array<std::uint64_t, N> inputs, std::size_t c = 9)
+  {
+    
+    std::array<std::uint64_t, (1 << N)> field_corners;
+    
+    std::uint8_t r = 0; 
+    
+    
+    for (std::size_t i = 0; i < field_corners.size(); i++)
+    {
+      std::array<std::uint64_t, N> field_inputs = inputs;
+      
+      
+      for (std::size_t k = 0; k < field_inputs.size(); k++)
+      {
+        field_inputs[k] >>= C;
+      }
+      
+      
+      for (std::size_t k = 0; k < N; k++)
+      {
+        if (i & (1 << k)) field_inputs[k]++;
+      }
+      
+      field_corners[i] = det_point_noise64(field_inputs, c);
+      
+      r += field_corners[i] & 0xFF;
+      }   
+    
+    std::array<std::uint64_t, N> sigvals;
+    for (std::size_t i = 0; i < N; i++)
+    {
+      sigvals[i] = inputs[i] & ((std::uint64_t(1) << C) - 1);
+    }
+
+    std::size_t q = N;
+    
+    for (std::size_t m = field_corners.size() >> 1; 
+     m != 0;
+     m >>= 1)
+    {
+      q--;
+      r ++;
+      for (std::size_t i = 0; i < m; i++)
+      {
+           
+        std::uint64_t a = field_corners[i];
+        std::uint64_t b = field_corners[i | m];
+        std::uint64_t v = sigvals[q];
+        uint128_t o = uint128_t(a) * ((uint128_t(1) << (C)) - v) + v * uint128_t(b);
+        
+        r ^= static_cast<std::uint8_t>((field_corners[i] & 0xFF00) >> 8);
+        
+        field_corners[i] = static_cast<std::uint64_t> ((o >> (C-4)) & ((uint128_t(1) << 64)-1));
+      }
+    }
+    
+    std::uint64_t out = field_corners[0];
+    if (out & (std::uint64_t(1) << 63))
+    {
+      out = ((~out ^ 1) << 1) | 1;
+    }
+    else out = out << 1;
+    
+    out ^= 1 & (r ^ (r >> 3) ^ (r >> 5));
+    
+    
+    return out;
+    
+    
+  }
+  
+  /** A deterministic pseudo-random N-dimensional smooth noise function, 
+      which, assuming the values of the input and hash function are 
+      uniformly distributed, provides uniformly distributed output.
+      
+      The algorithm used by this function might be changed in a future
+      version of this library.      
+      
+      @param C C is the template parameter that represents the number of
+      bits used to interpolate between coordinates. A higher value of C
+      will make the noise smooth over a larger range.
+      
+      @param N N is the number of elements in the array. Generally leave
+      this to automatic deduction.
+      
+      @param inputs A std::array of N 64-bit integers
+  */
+  template <std::size_t C = 32, std::size_t N = 1>
+  std::uint64_t uniform_smooth_noise64(std::array<std::uint64_t, N> inputs)
   {
     
     std::array<std::uint64_t, (1 << N)> field_corners;
@@ -135,11 +220,13 @@ namespace rpnx
         // we are in.
       }
       
-      field_corners[i] = det_point_noise64(field_inputs, c);
+      field_corners[i] = det_point_noise64(field_inputs, 8);
       // calculate the corner values
       
       r += field_corners[i] & 0xFF;
-      // extra randomness to replace randomness lost later
+      // replace lost randomness with this value;
+      
+      
     }   
     
     std::array<std::uint64_t, N> sigvals;
@@ -193,14 +280,14 @@ namespace rpnx
         std::uint64_t v = sigvals[q];
         // a is the "low" value is a low value for v should indicate a high contribution for a
         // b is the high value so a high value of v should be a high contribution from b
-        uint128_t o = uint128_t(a) * ((uint128_t(1) << (C)) - v) + v * uint128_t(b);
+       
+        std::uint64_t d = a - b;
         
-        r ^= static_cast<std::uint8_t>((field_corners[i] & 0xFF00) >> 8);
-        // update: use boost's 128-bit number to get around precision loss.
-        // It's unfortunate that precision is lost here... maybe there is a better way to do this
+        if ((~d + 1) < d) d = ~d + 1;
         
-        field_corners[i] = static_cast<std::uint64_t> ((o >> (C-4)) & ((uint128_t(1) << 64)-1));
-     //   field_corners[i] ^= 3 & ( (r >> 3) ^ (r >> 7));
+        uint128_t k = v * d / (std::uint64_t(1) << C) ;
+       
+        field_corners[i] = a + static_cast<std::uint64_t>(k);
       }
     }
     
@@ -220,7 +307,7 @@ namespace rpnx
       An unfortunate result of the above transformation is that although 
       it's uniform over the 64-bit space, the last bit only changes when
       the sign flips and thus effectively only 63 bits are adequately 
-      random. To fix that some random bits are used.
+      random. To fix that some "random" bits are used.
     */
     
     
