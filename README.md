@@ -11,5 +11,5 @@ Higher C-value gives more bits of interpolation. (slower change in noise value)
 
 ```
 std::array<uint64_t, 3> xyz = {pos.x, pos.y, pos.z};
-uint64_t pseudorandom_value = uniform_smooth_noise<16>(xyz);
+uint64_t pseudorandom_value = rpnx::uniform_smooth_noise<16>(xyz);
 ```
