@@ -6,7 +6,7 @@
     https://github.com/Exaeta/det_noise64
     
     uniform_smooth_noise64 is a N-dimensional uniform smooth noise 
-    function, but I'm going tochange the hash function into something 
+    function, but I'm going to change the hash function into something 
     faster/more well known in a later version (and/or allow templating 
     the hash used). The next version or version with templated hash will
     be cross platform deterministic.
