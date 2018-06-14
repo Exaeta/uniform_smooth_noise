@@ -46,7 +46,7 @@
 #include <cinttypes>
 #include <boost/multiprecision/cpp_int.hpp> 
 
-namespace ioncraft
+namespace rpnx
 {
   
   using uint64_t = std::uint64_t;
