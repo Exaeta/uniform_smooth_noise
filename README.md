@@ -17,5 +17,5 @@ uint64_t pseudorandom_value = rpnx::uniform_smooth_noise<16>(xyz);
 ## Help/Issues
 
 Issues are tracked on github.
-https://github.com/Exaeta/uniform_smooth_noise/
+https://github.com/Exaeta/uniform_smooth_noise/issues
 You can also get help using the library on irc.freenode.net, channel #rpnx, which is the preferred method unless you find a bug.
