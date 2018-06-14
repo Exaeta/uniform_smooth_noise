@@ -46,7 +46,7 @@
 #include <cinttypes>
 #include <boost/multiprecision/cpp_int.hpp> 
 
-namespace rpnx
+namespace ioncraft
 {
   
   using uint64_t = std::uint64_t;
@@ -203,28 +203,33 @@ namespace rpnx
     
     std::uint8_t r = 0; // used later;
     
+    std::array<std::uint64_t, N> field_inputs = inputs;
+    // Each dimension has a set of inputs
+      
+    for (std::size_t k = 0; k < field_inputs.size(); k++)
+    {
+      field_inputs[k] >>= C;
+    
+      // only the first N-C bits are significant to the field
+       
+     
+    }
+      
     
     for (std::size_t i = 0; i < field_corners.size(); i++)
     {
-      std::array<std::uint64_t, N> field_inputs = inputs;
-      // Each dimension has a set of inputs
-      
-      
-      for (std::size_t k = 0; k < field_inputs.size(); k++)
-      {
-        field_inputs[k] >>= C;
-        // only the first N-C bits are significant to the field
-      }
+   
+      std::array<std::uint64_t, N> field_inputs2 = field_inputs;
       
       
       for (std::size_t k = 0; k < N; k++)
       {
-        if (i & (1 << k)) field_inputs[k]++;
+        if (i & (1 << k)) field_inputs2[k]++;
         // We must adjust the field inputs depending on which "corners"
         // we are in.
       }
       
-      field_corners[i] = det_point_noise64(field_inputs, 8);
+      field_corners[i] = det_point_noise64(field_inputs2, 8);
       // calculate the corner values
       
       r += field_corners[i] & 0xFF;
@@ -232,6 +237,8 @@ namespace rpnx
       
       
     }   
+    
+   // std::cout << "intial corner[0]=" << field_corners[0] << std::endl;
     
     std::array<std::uint64_t, N> sigvals;
     for (std::size_t i = 0; i < N; i++)
@@ -289,9 +296,11 @@ namespace rpnx
         
         if ((~d + 1) < d) d = ~d + 1;
         
-        uint128_t k = (v * d) / (std::uint64_t(1) << C) ;
-       
-        field_corners[i] = a - static_cast<std::uint64_t>(k);
+        uint128_t k = (uint128_t(v) * d) / (std::uint64_t(1) << C) ;
+        
+        std::uint64_t uk = static_cast<std::uint64_t>(k);
+
+        field_corners[i] = a - uk;
       }
     }
     
