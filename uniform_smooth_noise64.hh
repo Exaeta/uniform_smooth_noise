@@ -1,5 +1,5 @@
 /* 
-  det_noise64.hh
+  uniform_smooth_noise64.hh
   
   Copyright (c) 2018 Ryan P. Nicholl, "Exaeta", <exaeta@protonmail.com>
   
