@@ -13,3 +13,9 @@ Higher C-value gives more bits of interpolation. (slower change in noise value)
 std::array<uint64_t, 3> xyz = {pos.x, pos.y, pos.z};
 uint64_t pseudorandom_value = rpnx::uniform_smooth_noise<16>(xyz);
 ```
+
+## Help/Issues
+
+Issues are tracked on github.
+https://github.com/Exaeta/uniform_smooth_noise/
+You can also get help using the library on irc.freenode.net, channel #rpnx, which is the preferred method unless you find a bug.
