@@ -46,7 +46,7 @@
 #include <cinttypes>
 #include <boost/multiprecision/cpp_int.hpp> 
 
-namespace rpnx
+namespace ioncraft
 {
   
   using uint64_t = std::uint64_t;
@@ -289,9 +289,9 @@ namespace rpnx
         
         if ((~d + 1) < d) d = ~d + 1;
         
-        uint128_t k = v * d / (std::uint64_t(1) << C) ;
+        uint128_t k = (v * d) / (std::uint64_t(1) << C) ;
        
-        field_corners[i] = a + static_cast<std::uint64_t>(k);
+        field_corners[i] = a - static_cast<std::uint64_t>(k);
       }
     }
     
