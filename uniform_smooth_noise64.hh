@@ -44,6 +44,7 @@
 
 #include <array>
 #include <cinttypes>
+#include <random>
 #include <boost/multiprecision/cpp_int.hpp> 
 
 namespace rpnx
@@ -57,7 +58,7 @@ namespace rpnx
     For insecure functions only.
   */
   template <std::size_t N>
-  std::uint64_t det_point_noise64(std::array<std::uint64_t, N> inputs, std::size_t c = 9)
+  std::uint64_t det_point_noise64(std::array<std::uint64_t, N> inputs, std::size_t c = 4)
   {
     std::uint64_t output = 0xFAFAFAFAFAFAFAFAull;
     for (std::size_t k = 0; k < c; k++)
@@ -77,6 +78,8 @@ namespace rpnx
     
     return output;
   }
+  
+  
   
   template <std::size_t N>
   bool det_point_noise1(std::array<std::uint64_t, N> inputs)
@@ -99,79 +102,7 @@ namespace rpnx
     return 1 & ( (output >> 7) ^ (output >> 3) ^ (output >> 5) ^ 
     (output >> 2) ^ (output >> 11) ^ (output >> 17) ^ (output >> 13) );
   }
-  
-  template <std::size_t C = 32, std::size_t N = 1>
-  [[deprecated]] std::uint64_t det_field_noise64(std::array<std::uint64_t, N> inputs, std::size_t c = 9)
-  {
-    
-    std::array<std::uint64_t, (1 << N)> field_corners;
-    
-    std::uint8_t r = 0; 
-    
-    
-    for (std::size_t i = 0; i < field_corners.size(); i++)
-    {
-      std::array<std::uint64_t, N> field_inputs = inputs;
-      
-      
-      for (std::size_t k = 0; k < field_inputs.size(); k++)
-      {
-        field_inputs[k] >>= C;
-      }
-      
-      
-      for (std::size_t k = 0; k < N; k++)
-      {
-        if (i & (1 << k)) field_inputs[k]++;
-      }
-      
-      field_corners[i] = det_point_noise64(field_inputs, c);
-      
-      r += field_corners[i] & 0xFF;
-      }   
-    
-    std::array<std::uint64_t, N> sigvals;
-    for (std::size_t i = 0; i < N; i++)
-    {
-      sigvals[i] = inputs[i] & ((std::uint64_t(1) << C) - 1);
-    }
 
-    std::size_t q = N;
-    
-    for (std::size_t m = field_corners.size() >> 1; 
-     m != 0;
-     m >>= 1)
-    {
-      q--;
-      r ++;
-      for (std::size_t i = 0; i < m; i++)
-      {
-           
-        std::uint64_t a = field_corners[i];
-        std::uint64_t b = field_corners[i | m];
-        std::uint64_t v = sigvals[q];
-        uint128_t o = uint128_t(a) * ((uint128_t(1) << (C)) - v) + v * uint128_t(b);
-        
-        r ^= static_cast<std::uint8_t>((field_corners[i] & 0xFF00) >> 8);
-        
-        field_corners[i] = static_cast<std::uint64_t> ((o >> (C-4)) & ((uint128_t(1) << 64)-1));
-      }
-    }
-    
-    std::uint64_t out = field_corners[0];
-    if (out & (std::uint64_t(1) << 63))
-    {
-      out = ((~out ^ 1) << 1) | 1;
-    }
-    else out = out << 1;
-    
-    out ^= 1 & (r ^ (r >> 3) ^ (r >> 5));
-    
-    
-    return out;
-    
-    
-  }
   
   /** A deterministic pseudo-random N-dimensional smooth noise function, 
       which, assuming the values of the input and hash function are 
@@ -194,12 +125,19 @@ namespace rpnx
       @space O(2^N),  O(1) as compiled
   */
   template <std::size_t C = 32, std::size_t N = 1>
-  std::uint64_t uniform_smooth_noise64(std::array<std::uint64_t, N> inputs)
+  std::uint64_t wave_noise64(std::array<std::uint64_t, N> inputs)
   {
+    using u64 = std::uint64_t;
+    using u128 = uint128_t;
+    using std::uint8_t;
     
-    std::array<std::uint64_t, (1 << N)> field_corners;
+    u64 out=0;
+    
+    std::array<uint64_t, (1 << N)> field_corners;
     // 2 ^ N dimensions
     // gathers the values in each corner.
+    
+    std::mt19937 rg;
     
     std::uint8_t r = 0; // used later;
     
@@ -241,9 +179,11 @@ namespace rpnx
    // std::cout << "intial corner[0]=" << field_corners[0] << std::endl;
     
     std::array<std::uint64_t, N> sigvals;
+    std::array<bool, N> bvals;
     for (std::size_t i = 0; i < N; i++)
     {
       sigvals[i] = inputs[i] & ((std::uint64_t(1) << C) - 1);
+      bvals[i] = 1 & inputs[i] >> C;
     }
     // We need to know the dimensional significance of dimension in
     // order to interpolate the values correctly.
@@ -256,60 +196,40 @@ namespace rpnx
     std::size_t q = N;
     // q here is to avoid taking logs later
     
-    for (std::size_t m = field_corners.size() >> 1
-     /* The initial value of m here is half the number of corners, 
-        because the collapsing inner
-        loop assumes that i|m is valid.
-        The number of corners will always be a power of two, so this works.
-     */; 
-     m != 0;
-     m >>= 1
-     /*
-      When a round finishes, we can collapse the next dimension, which
-      is represented by a power of two.
-     */)
+    
+    out = 0;
+    
+    for (size_t z = 0; z < N; z++)
     {
-      q--;
-      r ++;
-      // reduce by one before the loop (so sigvals[q] is valid because
-      // q < N
+      u64 a = det_point_noise64(std::array<u64, 1>{field_inputs[z]});
+      u64 b = det_point_noise64(std::array<u64, 1>{field_inputs[z]+1});
       
-      for (std::size_t i = 0; i < m; i++)
+      u64 v1 = sigvals[z];
+      u64 v2 = (u64(1) << C) - v1;
+      
+      //std::swap(a, b);
+      if (bvals[z]) 
       {
-        /* There are two corners involved in each inner loop of the
-           collapse, e.g. (0, x, y, z) and (1, x, y, z) where x, y, and
-           z are 0 or 1 and i = 0b[wxyz] 
-           so (w << 3) | (x << 2) | (y << 1) | (z << 0) etc. but for
-           N-dimensions.
-           */
-           
-        std::uint64_t a = field_corners[i];
-        // a is the first corner
-        std::uint64_t b = field_corners[i | m];
-        // and b is the second
-        
-        std::uint64_t v = sigvals[q];
-        // a is the "low" value is a low value for v should indicate a high contribution for a
-        // b is the high value so a high value of v should be a high contribution from b
-       
-        std::uint64_t d = a - b;
-        
-        if ((~d + 1) < d) d = ~d + 1;
-        
-        uint128_t k = (uint128_t(v) * d) / (std::uint64_t(1) << C) ;
-        
-        std::uint64_t uk = static_cast<std::uint64_t>(k);
-
-        field_corners[i] = a - uk;
+        std::swap(a, b);
+        std::swap(v1, v2);
       }
+      
+      u64 m1 = static_cast<u64>( ((u128(b) * v1) + (u128(a) * v2)) >> C );
+      
+      out += 0;
+      out += m1;
+      
+      
+      
+      
     }
     
-    std::uint64_t out = field_corners[0];
-    if (out & (std::uint64_t(1) << 63))
+     if (out & (std::uint64_t(1) << 63))
     {
       out = ((~out ^ 1) << 1) | 1;
     }
     else out = out << 1;
+    
     /* The transformation above is supposed to redistribute the "out" 
     value such that values near 0 are "similar" so there aren't abrupt 
     transitions due to modular arithmetic wrapping from 1 to 0.
@@ -323,11 +243,11 @@ namespace rpnx
       random. To fix that some "random" bits are used.
     */
     
-    
     return out;
     
-    
   }
+  
+   
 }
 
 #endif
