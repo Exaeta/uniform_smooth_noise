@@ -58,9 +58,9 @@ namespace rpnx
     For insecure functions only.
   */
   template <std::size_t N>
-  std::uint64_t det_point_noise64(std::array<std::uint64_t, N> inputs, std::size_t c = 4)
+  std::uint64_t det_point_noise64(std::array<std::uint64_t, N> inputs, std::size_t c = 5, std::uint64_t seed = 0)
   {
-    std::uint64_t output = 0xFAFAFAFAFAFAFAFAull;
+    std::uint64_t output = seed + 0xFAFAFAFAFAFAFAFAull;
     for (std::size_t k = 0; k < c; k++)
     {
       for (std::size_t i = 0; i < N; i++)
@@ -97,7 +97,7 @@ namespace rpnx
         output += k;
       }
     }
-    output = (output >> 17) | (output  << (64 - 17));
+    output = (output >> 19) | (output  << (64 - 19));
     
     return 1 & ( (output >> 7) ^ (output >> 3) ^ (output >> 5) ^ 
     (output >> 2) ^ (output >> 11) ^ (output >> 17) ^ (output >> 13) );
@@ -125,7 +125,7 @@ namespace rpnx
       @space O(2^N),  O(1) as compiled
   */
   template <std::size_t C = 32, std::size_t N = 1>
-  std::uint64_t wave_noise64(std::array<std::uint64_t, N> inputs)
+  std::uint64_t wave_noise64(std::array<std::uint64_t, N> inputs, std::uint64_t seed = 0)
   {
     using u64 = std::uint64_t;
     using u128 = uint128_t;
@@ -167,7 +167,7 @@ namespace rpnx
         // we are in.
       }
       
-      field_corners[i] = det_point_noise64(field_inputs2, 8);
+      field_corners[i] = det_point_noise64(field_inputs2, 8, seed);
       // calculate the corner values
       
       r += field_corners[i] & 0xFF;
@@ -201,8 +201,8 @@ namespace rpnx
     
     for (size_t z = 0; z < N; z++)
     {
-      u64 a = det_point_noise64(std::array<u64, 1>{field_inputs[z]});
-      u64 b = det_point_noise64(std::array<u64, 1>{field_inputs[z]+1});
+      u64 a = det_point_noise64(std::array<u64, 1>{field_inputs[z]}, 5, z+seed);
+      u64 b = det_point_noise64(std::array<u64, 1>{field_inputs[z]+1}, 5, z+seed);
       
       u64 v1 = sigvals[z];
       u64 v2 = (u64(1) << C) - v1;
@@ -247,7 +247,145 @@ namespace rpnx
     
   }
   
-   
+    template <typename R>
+  void wrap_correction(R & r, uint64_t & val)
+  {
+    if (val & (std::uint64_t(1) << 63))
+    {
+      val = ((~val ^ 1) << 1) | 1;
+    }
+    else val = val << 1;
+    
+    val ^= 1 & r();
+  }
+  
+  template <std::size_t C = 32, std::size_t D = 2, std::size_t N = 1>
+  std::uint64_t crystal_noise64(std::array<std::uint64_t, N> inputs)
+  {
+    using u64 = std::uint64_t;
+    
+    static_assert(64 - C - D >= 0 && 64 - C - D <= 63, "Invalid parameters");
+    
+    u64 out = 0;
+    std::array<u64, N+1> a;
+    
+    for (int i = 0; i < N; i++) 
+    { 
+      a[i] = inputs[i];
+    }
+    a[N] = 0;
+    
+    std::array<u64, N> field_input = inputs;
+    for (int i = 0; i < N; i++)
+    {
+      field_input[i] = inputs[i];
+    }
+    
+    if (true) for (u64 i = 0; i < N; i++)
+    {
+      std::array<u64, N> b = inputs;
+      
+      u64 k = det_point_noise64(std::array<u64, N>{i}, 5, i);
+      for (size_t i2 = 0; i2 < N; i2++)
+      {
+        b[i2] += k;
+      }
+      
+      field_input[i] += (wave_noise64<C>(b)) >> (64 - C - D) ;
+      
+    }
+    
+    out = wave_noise64<C>(field_input);
+    
+    return out;
+  }
+ 
+  
+  
+  template <std::size_t C = 32, std::size_t D = 2, std::size_t N = 1>
+  std::uint64_t bicrystal_noise64(std::array<std::uint64_t, N> inputs)
+  {
+    using u64 = std::uint64_t;
+    
+    static_assert(64 - C - D >= 0 && 64 - C - D <= 63, "Invalid parameters");
+    
+    
+    std::array<u64, N+1> a;
+    for (int i = 0; i < N; i++) 
+    { 
+      a[i] = inputs[i];
+    }
+    a[N] = 0;
+    
+    std::array<u64, N> field_input = inputs;
+    for (int i = 0; i < N; i++)
+    {
+      field_input[i] = inputs[i];
+    }
+    
+    if (true) for (u64 i = 0; i < N; i++)
+    {
+      std::array<u64, N> b = inputs;
+      
+      u64 k = det_point_noise64(std::array<u64, N>{i});
+      for (size_t i2 = 0; i2 < N; i2++)
+      {
+        b[i2] += k;
+      }
+      
+      field_input[i] += (crystal_noise64<C>(b)) >> (64 - C - D) ;
+      
+    }
+    
+    return wave_noise64<C>(field_input);
+  }
+  
+  
+  
+  
+  
+  template <std::size_t C = 12, size_t N = 1>
+  uint64_t weave_noise2d_64(std::array<uint64_t, N> inputs, bool correct = true, size_t d = 1)
+  {
+    std::mt19937_64 r{0};
+    std::uint64_t output = 0;
+    
+    const constexpr std::size_t K = 3;
+    const constexpr std::size_t k = (1 << K);
+    
+    std::array<uint64_t, N + 2> k_inputs;
+    
+    for (size_t i = 0; i < N; i++)
+    {
+      k_inputs[i] = inputs[i];
+    }
+    
+    k_inputs[N] = r();
+     k_inputs[N+1] = r();
+    
+    std::uint64_t q = (1 << (C));
+        
+    for (std::size_t i = 0; i < k; i++) for (std::size_t j = 0; j < k; j++)
+    {
+      
+      std::array<std::uint64_t, N+2> y_inputs = k_inputs;
+      y_inputs[N] = r();
+      y_inputs[N+1] = r();
+      y_inputs[0] += q*i;
+      y_inputs[1] += q*j;
+      
+      uint64_t km = crystal_noise64<C+K, 1>(y_inputs);
+      km = km/d;
+      output += km;
+    }
+    
+    if (correct) wrap_correction(r, output);
+    
+    return output;
+    
+    
+  }
+  
 }
 
 #endif
