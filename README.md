@@ -1,5 +1,9 @@
 # RPNX Uniform Smooth Noise
 
+Check out the examples:
+https://github.com/Exaeta/uniform_smooth_noise/wiki/Examples
+
+
 ```
 template <size_t C = 32, size_t N = 1>
 std::uint64_t rpnx::wave_noise64(std::array<std::uint64_t, N> inputs);
